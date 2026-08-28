@@ -1,0 +1,88 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK + NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: |
+          sdkmanager "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-LibTool-v${{ steps.version.outputs.version }}
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Android-LibTool v${{ steps.version.outputs.version }}"
+          body: |
+            ## Android-LibTool v${{ steps.version.outputs.version }}
+            
+            IL2CPP mod menu tool with ImGui overlay.
+            
+            ### Features
+            - Runtime target library selector (12 presets + custom)
+            - IL2CPP class/method browser
+            - Method tracer with Dobby hooking
+            - String extractor
+            - Memory patcher (KittyMemory)
+            - ImGui overlay with fullscreen toggle
+            
+            ### Supported Games
+            - IL2CPP games (default)
+            - MLBB (liblogic.so)
+            - Unity games (libunity.so)
+            - Unreal Engine (libUE4.so)
+            - And many more...
+            
+            ### Requirements
+            - Rooted Android device (Magisk/KernelSU)
+            - Android 5.0+
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          fail_on_unmatched_files: false
