@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Native .so
 
 on:
   push:
@@ -11,17 +11,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
 
       - name: Setup Android SDK + NDK
         uses: android-actions/setup-android@v3
@@ -29,16 +23,27 @@ jobs:
       - name: Install NDK
         run: |
           sdkmanager "ndk;25.2.9519653"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Build libTool.so (arm64-v8a)
+        run: |
+          $NDK_HOME/ndk-build \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=app/src/main/jni/Android.mk \
+            NDK_APPLICATION_MK=app/src/main/jni/Application.mk \
+            -j$(nproc)
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Check output
+        run: |
+          echo "=== Built .so files ==="
+          find . -name "libTool.so" -exec ls -lh {} \;
+          file libs/arm64-v8a/libTool.so
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --no-daemon
+      - name: Upload libTool.so
+        uses: actions/upload-artifact@v4
+        with:
+          name: libTool.so-arm64-v8a
+          path: libs/arm64-v8a/libTool.so
 
       - name: Get version
         id: version
@@ -46,43 +51,29 @@ jobs:
           VERSION=$(grep 'versionName' app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: Android-LibTool-v${{ steps.version.outputs.version }}
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: "Android-LibTool v${{ steps.version.outputs.version }}"
+          name: "libTool.so v${{ steps.version.outputs.version }}"
           body: |
-            ## Android-LibTool v${{ steps.version.outputs.version }}
+            ## libTool.so v${{ steps.version.outputs.version }}
             
-            IL2CPP mod menu tool with ImGui overlay.
+            IL2CPP mod menu native library (arm64-v8a).
             
-            ### Features
-            - Runtime target library selector (12 presets + custom)
-            - IL2CPP class/method browser
-            - Method tracer with Dobby hooking
-            - String extractor
-            - Memory patcher (KittyMemory)
-            - ImGui overlay with fullscreen toggle
+            ### How to use
+            1. Push libTool.so to `/data/local/tmp/`
+            2. `adb shell su -c "cp /data/local/tmp/libTool.so /data/data/<game>/lib/"`
+            3. Or inject into game APK with MT Manager / NP Manager
             
-            ### Supported Games
-            - IL2CPP games (default)
-            - MLBB (liblogic.so)
-            - Unity games (libunity.so)
-            - Unreal Engine (libUE4.so)
-            - And many more...
+            ### Runtime Target Selector
+            Open ImGui Settings tab → select game preset:
+            - IL2CPP (Default), MLBB, Unity, Unreal Engine
+            - Free Fire, PUBG, Genshin, COD Mobile, etc.
+            - Or input custom lib name
             
             ### Requirements
-            - Rooted Android device (Magisk/KernelSU)
-            - Android 5.0+
-          files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+            - Rooted Android (Magisk/KernelSU)
+            - Android 5.0+ (arm64)
+          files: libs/arm64-v8a/libTool.so
           fail_on_unmatched_files: false
