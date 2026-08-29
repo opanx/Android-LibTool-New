@@ -285,13 +285,13 @@ void draw_thread()
             {
                 static int presetIdx = 0;
                 auto presets = getGamePresets();
-                auto preview = presets[presetIdx].name;
+                auto preview = presets[presetIdx].displayName;
                 if (ImGui::BeginCombo("Game##preset", preview))
                 {
                     for (int i = 0; i < numGamePresets; i++)
                     {
                         bool selected = (i == presetIdx);
-                        if (ImGui::Selectable(presets[i].name, selected))
+                        if (ImGui::Selectable(presets[i].displayName, selected))
                         {
                             presetIdx = i;
                             setSelectedGamePreset(i);
@@ -304,7 +304,7 @@ void draw_thread()
                     }
                     ImGui::EndCombo();
                 }
-                ImGui::Text("Current: %s -> %s", presets[presetIdx].name, getTargetLibName());
+                ImGui::Text("Current: %s -> %s", presets[presetIdx].displayName, getTargetLibName());
             }
             ImGui::Separator();
             ImGui::Text("Info");
