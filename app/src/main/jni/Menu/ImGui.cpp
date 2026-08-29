@@ -105,6 +105,7 @@ void (*menuAddress)();
 void (*onInitAddr)();
 
 bool isInitialized = false;
+bool menuReady = false;
 int glWidth = 0;
 int glHeight = 0;
 
@@ -172,6 +173,15 @@ void *initModMenu(void *menu_addr, void *on_init_addr, bool isJni)
     return nullptr;
 }
 
+static void *on_init_thread(void *)
+{
+    if (onInitAddr)
+        onInitAddr();
+    menuReady = true;
+    LOGI("on_init complete - menu ready");
+    return nullptr;
+}
+
 void setupMenu()
 {
     if (isInitialized)
@@ -188,7 +198,6 @@ void setupMenu()
     io.DisplaySize = ImVec2((float)glWidth, (float)glHeight);
     // io.ConfigWindowsMoveFromTitleBarOnly = true;
     io.IniFilename = nullptr;
-    // enable docking
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     io.SetClipboardTextFn = SetClipboardText;
@@ -198,9 +207,6 @@ void setupMenu()
     ImGui_ImplAndroid_Init(g_AppWindow);
     ImGui_ImplOpenGL3_Init("#version 300 es");
 
-    // int systemScale = (1.0 / glWidth) * glWidth;
-    // ImFontConfig font_cfg;
-    // font_cfg.SizePixels = systemScale * 22.0f;
     io.Fonts->AddFontFromMemoryTTF(Roboto_Regular, sizeof(Roboto_Regular), 18.0f);
 
     ImGui::GetStyle().ScaleAllSizes(2);
@@ -211,11 +217,20 @@ void setupMenu()
     style.FrameRounding = 6.0f;
     style.GrabMinSize = 12.0f;
 
-    if (onInitAddr)
-        onInitAddr();
-
     isInitialized = true;
-    LOGI("setup done.");
+    LOGI("ImGui context ready.");
+
+    // Run on_init in a SEPARATE thread - don't block render thread!
+    if (onInitAddr)
+    {
+        pthread_t initThread;
+        pthread_create(&initThread, nullptr, on_init_thread, nullptr);
+        pthread_detach(initThread);
+    }
+    else
+    {
+        menuReady = true;
+    }
 }
 
 void handleInputEvent(int action, float x, float y)
@@ -251,7 +266,7 @@ void handleInputEvent(int action, float x, float y)
 }
 void internalDrawMenu(int width, int height)
 {
-    if (!isInitialized)
+    if (!isInitialized || !menuReady)
         return;
 
     ImGui_ImplOpenGL3_NewFrame();
